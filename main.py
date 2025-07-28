@@ -6,11 +6,11 @@ import pandas as pd
 # 1. إنشاء التطبيق
 app = FastAPI()
 
-# 2. تحميل المودل
-model = joblib.load("child_behavior_model.pkl")  # تأكد من رفع هذا الملف لـ Render
-top_category_encoder = joblib.load("top_category_encoder.pkl")  # إذا عندك إيمبودنق لاسم الفئة
+# 2. تحميل المودلز
+model = joblib.load("child_behavior_model.pkl")  # ← اسم المودل الجديد
+top_category_encoder = joblib.load("top_category_encoder.pkl")  # موجود حسب GitHub
 
-# 3. نموذج الطلب (اللي يجيك من الـ Frontend)
+# 3. نموذج البيانات من الواجهة الأمامية
 class ChildInput(BaseModel):
     spend_rate: float
     top_spending_category: str
@@ -24,16 +24,15 @@ class ChildInput(BaseModel):
     do_parent_challenges: int
     num_items_sold_in_marketplace: int
 
-# 4. نقطة التنبؤ
+# 4. API Endpoint للتنبؤ
 @app.post("/predict")
 def predict(input: ChildInput):
-    # تحويل بيانات JSON إلى DataFrame
+    # تحويل JSON إلى DataFrame
     data = input.dict()
     df = pd.DataFrame([data])
 
-    # تحويل الفئة النصية إلى رقمية إذا لزم الأمر
-    if "top_spending_category" in df.columns:
-        df["top_spending_category"] = top_category_encoder.transform(df["top_spending_category"])
+    # تشفير الفئة النصية
+    df["top_spending_category"] = top_category_encoder.transform(df["top_spending_category"])
 
     # تنبؤ
     prediction = model.predict(df)[0]
