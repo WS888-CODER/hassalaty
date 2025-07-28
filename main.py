@@ -1,83 +1,41 @@
-from flask import Flask, request, jsonify
+from fastapi import FastAPI
+from pydantic import BaseModel
 import joblib
-import numpy as np
 import pandas as pd
-from math import radians, sin, cos, sqrt, atan2
 
-app = Flask(__name__)
+# 1. إنشاء التطبيق
+app = FastAPI()
 
-# تحميل المودل والمقياس
-model = joblib.load("toweriq_model_prob.pkl")
-scaler = joblib.load("toweriq_scaler_prob.pkl")
+# 2. تحميل المودل
+model = joblib.load("child_model.pkl")  # تأكد من رفع هذا الملف لـ Render
+top_category_encoder = joblib.load("top_category_encoder.pkl")  # إذا عندك إيمبودنق لاسم الفئة
 
-# حساب المسافة الجغرافية
-def haversine(lat1, lon1, lat2, lon2):
-    R = 6371.0
-    lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
-    dlat = lat2 - lat1
-    dlon = lon2 - lon1
-    a = sin(dlat / 2)**2 + cos(lat1) * cos(lat2) * sin(dlon / 2)**2
-    return R * 2 * atan2(sqrt(a), sqrt(1 - a))
+# 3. نموذج الطلب (اللي يجيك من الـ Frontend)
+class ChildInput(BaseModel):
+    spend_rate: float
+    top_spending_category: str
+    save_rate: float
+    tasks_failed: int
+    tasks_completed: int
+    impulsive_purchases: int
+    max_purchase_amount: float
+    saving_goal_success_rate: float
+    refused_purchase_opportunities: int
+    do_parent_challenges: int
+    num_items_sold_in_marketplace: int
 
-# استخراج الإجراء المطلوب
-def suggest_action(prob, alt_diff):
-    if prob > 0.8:
-        return "تنبيه فوري! احتمالية تصادم مرتفعة، راجع الارتفاعات والمسارات"
-    elif prob > 0.5:
-        return "تحذير: اقتراح بتغيير مسار أو سرعة إحدى الطائرتين"
-    elif alt_diff < 300:
-        return "مراجعة فرق الارتفاع: الفرق قليل"
-    else:
-        return "الوضع آمن، لا حاجة لإجراء حالياً"
+# 4. نقطة التنبؤ
+@app.post("/predict")
+def predict(input: ChildInput):
+    # تحويل بيانات JSON إلى DataFrame
+    data = input.dict()
+    df = pd.DataFrame([data])
 
-@app.route('/predict', methods=['POST'])
-def predict():
-    data = request.json
-    try:
-        # التقاط المدخلات
-        lat1 = float(data['lat1'])
-        lon1 = float(data['lon1'])
-        alt1 = float(data['alt1'])
-        speed1 = float(data['speed1'])
-        heading1 = float(data['heading1'])
+    # تحويل الفئة النصية إلى رقمية إذا لزم الأمر
+    if "top_spending_category" in df.columns:
+        df["top_spending_category"] = top_category_encoder.transform(df["top_spending_category"])
 
-        lat2 = float(data['lat2'])
-        lon2 = float(data['lon2'])
-        alt2 = float(data['alt2'])
-        speed2 = float(data['speed2'])
-        heading2 = float(data['heading2'])
+    # تنبؤ
+    prediction = model.predict(df)[0]
 
-        # الميزات المشتقة
-        distance = haversine(lat1, lon1, lat2, lon2)
-        alt_diff = abs(alt1 - alt2)
-        speed_diff = abs(speed1 - speed2)
-        heading_diff = abs((heading1 - heading2 + 180) % 360 - 180)
-
-        # تجميع المصفوفة
-        features = pd.DataFrame([[
-            lat1, lon1, alt1, speed1, heading1,
-            lat2, lon2, alt2, speed2, heading2,
-            distance, alt_diff, speed_diff, heading_diff
-        ]], columns=[
-            'lat1', 'lon1', 'alt1', 'speed1', 'heading1',
-            'lat2', 'lon2', 'alt2', 'speed2', 'heading2',
-            'distance', 'alt_diff', 'speed_diff', 'heading_diff'
-        ])
-
-        # القياس والتوقع
-        features_scaled = scaler.transform(features)
-        prob = model.predict_proba(features_scaled)[0][1]
-        prob_percent = f"{prob*100:.2f}%"
-        action = suggest_action(prob, alt_diff)
-
-        return jsonify({
-            'collision_probability': prob_percent,
-            'action_required': action
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
-import os
-
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    return {"predicted_label": prediction}
