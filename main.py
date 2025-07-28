@@ -7,7 +7,7 @@ import pandas as pd
 app = FastAPI()
 
 # 2. تحميل المودل
-model = joblib.load("child_model.pkl")  # تأكد من رفع هذا الملف لـ Render
+model = joblib.load("child_behavior_model.pkl")  # تأكد من رفع هذا الملف لـ Render
 top_category_encoder = joblib.load("top_category_encoder.pkl")  # إذا عندك إيمبودنق لاسم الفئة
 
 # 3. نموذج الطلب (اللي يجيك من الـ Frontend)
